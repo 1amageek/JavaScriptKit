@@ -15,7 +15,9 @@
     "prepublishOnly": "npm run build",
     "format": "prettier --write Runtime/src",
     "test:runtime": "vitest run Runtime/test",
-    "check:bridgejs-dts": "tsc --project Plugins/BridgeJS/Tests/BridgeJSToolTests/__Snapshots__/BridgeJSLinkTests/tsconfig.json"
+    "check:bridgejs-dts": "tsc --project Plugins/BridgeJS/Tests/BridgeJSToolTests/__Snapshots__/BridgeJSLinkTests/tsconfig.json",
+    "measure:embedded-size": "Examples/Embedded/measure-size.sh",
+    "test:embedded-example": "node Examples/Embedded/verify.mjs"
   },
   "keywords": [
     "Swift",

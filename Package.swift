@@ -223,6 +223,7 @@ let package = Package(
             exclude: [
                 "bridge-js.config.json",
                 "Generated/JavaScript",
+                "JavaScript",
             ],
             swiftSettings: [
                 .enableExperimentalFeature("Extern")

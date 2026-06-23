@@ -250,7 +250,7 @@ extension JSObject {
 //
 // Once Embedded Swift supports parameter packs/variadic generics, we can
 // replace all variants with a single method each that takes a generic pack.
-extension JSFunction {
+extension JSObject {
 
     @discardableResult
     public func callAsFunction(this: JSObject) -> JSValue {
