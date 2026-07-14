@@ -62,6 +62,7 @@ private func _swift_js_throw_extern(_ id: Int32) {
 ///
 /// - Parameter pointer: The pointer to `_BridgeJSTypedClosureBox` instance
 @_expose(wasm, "bjs_release_swift_closure")
+@_cdecl("bjs_release_swift_closure")
 public func _bjs_release_swift_closure(_ pointer: UnsafeMutableRawPointer) {
     Unmanaged<AnyObject>.fromOpaque(pointer).release()
 }

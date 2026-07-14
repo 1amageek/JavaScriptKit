@@ -41,20 +41,11 @@ extension JavaScriptEventLoop: SchedulingExecutor {
         clock: C
     ) {
         #if hasFeature(Embedded)
-        #if compiler(>=6.4)
-        // In Embedded Swift, ContinuousClock and SuspendingClock are unavailable.
-        // Hand-off the scheduling work to the Clock implementation for custom clocks.
-        clock.enqueue(
-            job,
-            on: self,
-            at: clock.now.advanced(by: delay),
-            tolerance: tolerance
-        )
-        #else
+        // The 6.4 snapshot toolchains do not ship `Clock.enqueue` yet; delayed
+        // enqueue (Task.sleep) is unsupported on Embedded until they do.
         fatalError(
-            "Delayed enqueue requires Swift 6.4+ in Embedded mode"
+            "Delayed enqueue is not supported on this Embedded toolchain"
         )
-        #endif  // #if compiler(>=6.4) (Embedded)
         #else  // #if hasFeature(Embedded)
         let duration: Duration
         if let _ = clock as? ContinuousClock {
