@@ -16,6 +16,14 @@ public protocol JSClosureProtocol: JSValueCompatible {
 /// `JSOneshotClosure` is a JavaScript function that can be called only once. This class can be used
 /// for optimized memory management when compared to the common `JSClosure`.
 public class JSOneshotClosure: JSObject, JSClosureProtocol {
+    package struct ObservationHandle: Sendable {
+        let objectID: JavaScriptObjectRef
+        let hostFunctionID: JavaScriptHostFuncRef
+        #if _runtime(_multithreaded)
+        let ownerThreadID: Int32
+        #endif
+    }
+
     private var hostFuncRef: JavaScriptHostFuncRef = 0
 
     public init(
@@ -96,6 +104,51 @@ public class JSOneshotClosure: JSObject, JSClosureProtocol {
     public func release() {
         JSClosure.sharedClosures.wrappedValue[hostFuncRef] = nil
     }
+
+    package var observationHandle: ObservationHandle {
+        #if _runtime(_multithreaded)
+        return ObservationHandle(
+            objectID: id,
+            hostFunctionID: hostFuncRef,
+            ownerThreadID: ownerTid
+        )
+        #else
+        ObservationHandle(
+            objectID: id,
+            hostFunctionID: hostFuncRef
+        )
+        #endif
+    }
+
+    /// Cancels an asynchronous observation without making a late JavaScript
+    /// invocation call back into released Swift state.
+    package static func cancelObservation(
+        _ handle: ObservationHandle
+    ) {
+        #if _runtime(_multithreaded)
+        if handle.ownerThreadID != swjs_get_worker_thread_id_cached() {
+            swjs_cancel_oneshot_function_remote(
+                handle.ownerThreadID,
+                handle.objectID,
+                handle.hostFunctionID
+            )
+            return
+        }
+        #endif
+        swjs_cancel_oneshot_function(handle.objectID)
+        JSClosure.sharedClosures.wrappedValue[handle.hostFunctionID] = nil
+    }
+
+    package static func link(
+        _ first: JSOneshotClosure,
+        _ second: JSOneshotClosure
+    ) {
+        swjs_link_oneshot_functions(first.id, second.id)
+    }
+
+    static var activeClosureCountForTesting: Int {
+        JSClosure.sharedClosures.wrappedValue.count
+    }
 }
 
 /// `JSClosure` represents a JavaScript function the body of which is written in Swift.
@@ -142,6 +195,10 @@ public class JSClosure: JSObject, JSClosureProtocol {
         subscript(_ key: JavaScriptHostFuncRef) -> Entry? {
             get { storage[key] }
             set { storage[key] = newValue }
+        }
+
+        var count: Int {
+            storage.count
         }
     }
 

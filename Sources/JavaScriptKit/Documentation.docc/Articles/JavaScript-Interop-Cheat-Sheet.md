@@ -337,6 +337,11 @@ public final class JSPromise: JSBridgedClass {
     // Available when JavaScriptEventLoop is linked
     public var value: JSValue { get async throws(JSException) }
     public var result: Result { get async }
+
+    public func observe(
+        success: @escaping (sending JSValue) -> JSValue,
+        failure: @escaping (sending JSValue) -> JSValue
+    ) -> JSPromiseObservation
 }
 ```
 
@@ -373,4 +378,7 @@ let swiftPromise = JSPromise.async {
 - Use `JSPromise.async(body:)` (with `Void` or `JSValue` return type) to expose Swift `async/await` work to JavaScript callers.
 - To await JavaScript `Promise` from Swift, import `JavaScriptEventLoop`, call `JavaScriptEventLoop.installGlobalExecutor()` early, and use the `value` property.
 - The `value` property suspends until the promise resolves or rejects, rethrowing rejections as ``JSException``.
-
+- Use ``JSPromise/observe(success:failure:)`` when a caller needs an explicit
+  cancellation lifetime. Retain the returned ``JSPromiseObservation`` while
+  callbacks are valid, then call ``JSPromiseObservation/cancel()``. Settlement
+  or cancellation makes both handlers inert and releases both Swift closures.

@@ -123,6 +123,14 @@ export type Exports = {
 
 Unlike plain arrays which use copy semantics, `JSTypedArray` uses **reference semantics** — it wraps a JavaScript TypedArray object and passes it by reference (no data copying). This is ideal for large binary data or when interacting with JavaScript APIs that expect TypedArrays.
 
+When Swift must own the bytes, first use
+``JSTypedArray/validatedByteLength()`` and then
+``JSTypedArray/copyBytes(to:)`` with a destination of that size. The copy uses
+the TypedArray intrinsic view, including its real byte offset and byte length;
+overridable JavaScript properties cannot widen the source to its complete
+backing buffer. Invalid, detached, and undersized-copy cases are reported as
+``JSTypedArrayCopyError``.
+
 | Swift | TypeScript |
 |:------|:-----------|
 | `JSTypedArray<UInt8>` / `JSUint8Array` | `Uint8Array` |

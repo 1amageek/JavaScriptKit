@@ -19,7 +19,7 @@ function makeRuntime(): { runtime: SwiftRuntime; memory: WebAssembly.Memory } {
     runtime.setInstance({
         exports: {
             memory,
-            swjs_library_version: () => 708,
+            swjs_library_version: () => 709,
         },
     } as unknown as WebAssembly.Instance);
     return { runtime, memory };

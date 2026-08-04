@@ -123,4 +123,53 @@ final class JSTypedArrayTests: XCTestCase {
             XCTAssertEqual(destination[i], i)
         }
     }
+
+    func testCopyBytesPreservesOffsetViewAndIgnoresSpoofedProperties() throws {
+        let backing = JSUint8Array([0xaa, 7, 8, 9, 0xbb])
+        let viewObject = backing.jsObject.subarray!(1, 4).object!
+        func defineOwnValue(_ name: String, _ value: some ConvertibleToJSValue) {
+            let descriptor = JSObject.global.Object.function!.new()
+            descriptor.value = value.jsValue
+            _ = JSObject.global.Object.function!.defineProperty!(
+                viewObject,
+                name,
+                descriptor
+            )
+        }
+        defineOwnValue("byteLength", 1_000)
+        defineOwnValue("byteOffset", 0)
+        defineOwnValue(
+            "buffer",
+            JSObject.global.ArrayBuffer.function!.new(1_000)
+        )
+        let view = try XCTUnwrap(JSUint8Array(from: viewObject))
+
+        XCTAssertEqual(try view.validatedByteLength(), 3)
+        let destination = UnsafeMutableRawBufferPointer.allocate(
+            byteCount: 3,
+            alignment: 1
+        )
+        defer { destination.deallocate() }
+        try view.copyBytes(to: destination)
+
+        XCTAssertEqual(Array(destination), [7, 8, 9])
+    }
+
+    func testCopyBytesRejectsUndersizedDestinationWithoutWriting() throws {
+        let array = JSUint8Array([1, 2, 3])
+        let destination = UnsafeMutableRawBufferPointer.allocate(
+            byteCount: 2,
+            alignment: 1
+        )
+        defer { destination.deallocate() }
+        destination.initializeMemory(as: UInt8.self, repeating: 0xcc)
+
+        XCTAssertThrowsError(try array.copyBytes(to: destination)) { error in
+            XCTAssertEqual(
+                error as? JSTypedArrayCopyError,
+                .destinationTooSmall(required: 3, capacity: 2)
+            )
+        }
+        XCTAssertEqual(Array(destination), [0xcc, 0xcc])
+    }
 }

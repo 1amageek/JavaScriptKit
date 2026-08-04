@@ -208,6 +208,20 @@ extension JSPromise {
     ///
     /// - Note: Calling this function does not switch from the caller's isolation domain.
     public func value(isolation: isolated (any Actor)? = #isolation) async throws(JSException) -> JSValue {
+        #if compiler(>=6.4)
+        try await withUnsafeContinuation { [self] continuation in
+            self.then(
+                success: {
+                    continuation.resume(returning: Swift.Result<JSValue, JSException>.success($0))
+                    return JSValue.undefined
+                },
+                failure: {
+                    continuation.resume(returning: Swift.Result<JSValue, JSException>.failure(.init($0)))
+                    return JSValue.undefined
+                }
+            )
+        }.get()
+        #else
         try await withUnsafeContinuation(isolation: isolation) { [self] continuation in
             self.then(
                 success: {
@@ -220,6 +234,7 @@ extension JSPromise {
                 }
             )
         }.get()
+        #endif
     }
 
     /// Wait for the promise to complete, returning its result or exception as a Result.

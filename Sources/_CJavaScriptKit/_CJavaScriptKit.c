@@ -20,7 +20,7 @@ extern void *memcpy (void *__restrict, const void *__restrict, size_t);
 /// this and `SwiftRuntime.version` in `./Runtime/src/index.ts`.
 __attribute__((export_name("swjs_library_version")))
 int swjs_library_version(void) {
-    return 708;
+    return 709;
 }
 
 __attribute__((export_name("swjs_prepare_host_function_call")))

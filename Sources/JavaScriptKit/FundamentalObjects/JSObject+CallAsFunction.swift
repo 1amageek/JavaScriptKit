@@ -252,6 +252,11 @@ extension JSObject {
 // replace all variants with a single method each that takes a generic pack.
 extension JSObject {
 
+    /// A modifier that catches JavaScript exceptions and returns them to Swift.
+    public var `throws`: JSThrowingFunction {
+        JSThrowingFunction(self)
+    }
+
     @discardableResult
     public func callAsFunction(this: JSObject) -> JSValue {
         invokeNonThrowingJSFunction(arguments: [], this: this).jsValue

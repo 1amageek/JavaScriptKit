@@ -35,12 +35,80 @@ export type SwiftRuntimeOptions = {
     threadChannel?: SwiftRuntimeThreadChannel;
 };
 
+const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+const typedArrayBufferGetter = Object.getOwnPropertyDescriptor(
+    typedArrayPrototype,
+    "buffer",
+)!.get!;
+const typedArrayByteOffsetGetter = Object.getOwnPropertyDescriptor(
+    typedArrayPrototype,
+    "byteOffset",
+)!.get!;
+const typedArrayByteLengthGetter = Object.getOwnPropertyDescriptor(
+    typedArrayPrototype,
+    "byteLength",
+)!.get!;
+
+const enum TypedArrayCopyStatus {
+    Success = 0,
+    InvalidTypedArray = 1,
+    ByteLengthOutOfRange = 2,
+    DestinationTooSmall = 3,
+    MemoryAccessFailed = 4,
+}
+
+type TypedArrayByteViewResult =
+    | { status: TypedArrayCopyStatus.Success; bytes: Uint8Array }
+    | {
+          status:
+              | TypedArrayCopyStatus.InvalidTypedArray
+              | TypedArrayCopyStatus.ByteLengthOutOfRange;
+      };
+
+type OneshotFunctionState = {
+    active: boolean;
+    hostFunctionID: number;
+    linked?: OneshotFunctionState;
+};
+
+function getTypedArrayByteView(value: unknown): TypedArrayByteViewResult {
+    try {
+        // Intrinsic accessors cannot be replaced by own properties or a
+        // subclass override. They also reject Proxy and non-TypedArray values.
+        const buffer = typedArrayBufferGetter.call(value) as ArrayBufferLike;
+        const byteOffset = typedArrayByteOffsetGetter.call(value) as number;
+        const byteLength = typedArrayByteLengthGetter.call(value) as number;
+        if (
+            !Number.isSafeInteger(byteOffset) ||
+            byteOffset < 0 ||
+            !Number.isSafeInteger(byteLength) ||
+            byteLength < 0
+        ) {
+            return { status: TypedArrayCopyStatus.InvalidTypedArray };
+        }
+        if (byteLength > 0xffff_ffff) {
+            return { status: TypedArrayCopyStatus.ByteLengthOutOfRange };
+        }
+        return {
+            status: TypedArrayCopyStatus.Success,
+            bytes: new Uint8Array(buffer, byteOffset, byteLength),
+        };
+    } catch {
+        return { status: TypedArrayCopyStatus.InvalidTypedArray };
+    }
+}
+
 export class SwiftRuntime {
     private _instance: WebAssembly.Instance | null;
     private readonly memory: JSObjectSpace;
     private _closureDeallocator: SwiftClosureDeallocator | null;
     private options: SwiftRuntimeOptions;
-    private version: number = 708;
+    private version: number = 709;
+
+    private readonly oneshotFunctionStates = new WeakMap<
+        (...args: any[]) => any,
+        OneshotFunctionState
+    >();
 
     private textDecoder = new TextDecoder("utf-8");
     private textEncoder = new TextEncoder(); // Only support utf-8
@@ -258,6 +326,28 @@ export class SwiftRuntime {
         return output;
     }
 
+    private cancelOneshotFunction(ref: ref) {
+        let func: unknown;
+        try {
+            func = this.memory.getObject(ref);
+        } catch (error) {
+            // Remote cancellation can arrive after settlement released the
+            // object-space reference. Cancellation is idempotent, so a stale
+            // generation is already in the requested final state.
+            if (error instanceof ReferenceError) return;
+            throw error;
+        }
+        if (typeof func !== "function") return;
+        const oneshotFunction = func as (...args: any[]) => any;
+        const state = this.oneshotFunctionStates.get(oneshotFunction);
+        if (!state) return;
+        state.active = false;
+        if (state.linked?.active) {
+            state.linked.active = false;
+            this.exports.swjs_free_host_function(state.linked.hostFunctionID);
+        }
+    }
+
     /** @deprecated Use `wasmImports` instead */
     importObjects = () => this.wasmImports;
 
@@ -265,7 +355,13 @@ export class SwiftRuntime {
         let broker: MessageBroker | null = null;
         const getMessageBroker = (threadChannel: SwiftRuntimeThreadChannel) => {
             if (broker) return broker;
-            const itcInterface = new ITCInterface(this.memory);
+            const itcInterface = new ITCInterface(
+                this.memory,
+                (objectRef, hostFunctionID) => {
+                    this.cancelOneshotFunction(objectRef);
+                    this.exports.swjs_free_host_function(hostFunctionID);
+                },
+            );
             type ITCMethodName = keyof ITCInterface;
 
             const defaultRequestHandler = (
@@ -704,10 +800,82 @@ export class SwiftRuntime {
                 file: ref,
             ) => {
                 const fileString = this.memory.getObject(file) as string;
-                const func = (...args: any[]) =>
-                    this.callHostFunction(host_func_id, line, fileString, args);
+                const state: OneshotFunctionState = {
+                    active: true,
+                    hostFunctionID: host_func_id,
+                };
+                const func = (...args: any[]) => {
+                    if (!state.active) return undefined;
+                    state.active = false;
+                    if (state.linked?.active) {
+                        state.linked.active = false;
+                        this.exports.swjs_free_host_function(
+                            state.linked.hostFunctionID,
+                        );
+                    }
+                    return this.callHostFunction(
+                        host_func_id,
+                        line,
+                        fileString,
+                        args,
+                    );
+                };
+                this.oneshotFunctionStates.set(func, state);
                 const func_ref = this.memory.retain(func);
                 return func_ref;
+            },
+
+            swjs_link_oneshot_functions: (first: ref, second: ref) => {
+                const firstFunction = this.memory.getObject(first);
+                const secondFunction = this.memory.getObject(second);
+                if (
+                    typeof firstFunction !== "function" ||
+                    typeof secondFunction !== "function"
+                ) {
+                    throw new TypeError(
+                        "Expected two JavaScriptKit oneshot functions",
+                    );
+                }
+                const firstState =
+                    this.oneshotFunctionStates.get(firstFunction);
+                const secondState =
+                    this.oneshotFunctionStates.get(secondFunction);
+                if (!firstState || !secondState) {
+                    throw new TypeError(
+                        "Expected two JavaScriptKit oneshot functions",
+                    );
+                }
+                firstState.linked = secondState;
+                secondState.linked = firstState;
+            },
+
+            swjs_cancel_oneshot_function: (ref: ref) => {
+                this.cancelOneshotFunction(ref);
+            },
+
+            swjs_cancel_oneshot_function_remote: (
+                tid: number,
+                ref: ref,
+                hostFunctionID: number,
+            ) => {
+                if (!this.options.threadChannel) {
+                    throw new Error(
+                        "threadChannel is not set in options given to SwiftRuntime. Please set it to cancel functions on remote threads.",
+                    );
+                }
+                const broker = getMessageBroker(this.options.threadChannel);
+                broker.request({
+                    type: "request",
+                    data: {
+                        sourceTid: this.tid ?? MAIN_THREAD_TID,
+                        targetTid: tid,
+                        context: 0,
+                        request: {
+                            method: "cancelOneshot",
+                            parameters: [ref, hostFunctionID],
+                        },
+                    },
+                });
             },
 
             swjs_create_typed_array: <
@@ -760,11 +928,57 @@ export class SwiftRuntime {
                 return this.memory.retain({});
             },
 
-            swjs_load_typed_array: (ref: ref, buffer: pointer) => {
-                const memory = this.memory;
-                const typedArray = memory.getObject(ref);
-                const bytes = new Uint8Array(typedArray.buffer);
-                this.getUint8Array().set(bytes, buffer >>> 0);
+            swjs_get_typed_array_byte_length: (
+                ref: ref,
+                byteLengthPtr: pointer,
+            ) => {
+                const result = getTypedArrayByteView(
+                    this.memory.getObject(ref),
+                );
+                if (result.status !== TypedArrayCopyStatus.Success) {
+                    return result.status;
+                }
+                try {
+                    this.getDataView().setUint32(
+                        byteLengthPtr >>> 0,
+                        result.bytes.byteLength,
+                        true,
+                    );
+                    return TypedArrayCopyStatus.Success;
+                } catch {
+                    return TypedArrayCopyStatus.MemoryAccessFailed;
+                }
+            },
+
+            swjs_copy_typed_array_bytes: (
+                ref: ref,
+                buffer: pointer,
+                capacity: number,
+                byteLengthPtr: pointer,
+            ) => {
+                const result = getTypedArrayByteView(
+                    this.memory.getObject(ref),
+                );
+                if (result.status !== TypedArrayCopyStatus.Success) {
+                    return result.status;
+                }
+                const byteLength = result.bytes.byteLength;
+                try {
+                    this.getDataView().setUint32(
+                        byteLengthPtr >>> 0,
+                        byteLength,
+                        true,
+                    );
+                    if (capacity >>> 0 < byteLength) {
+                        return TypedArrayCopyStatus.DestinationTooSmall;
+                    }
+                    if (byteLength > 0) {
+                        this.getUint8Array().set(result.bytes, buffer >>> 0);
+                    }
+                    return TypedArrayCopyStatus.Success;
+                } catch {
+                    return TypedArrayCopyStatus.MemoryAccessFailed;
+                }
             },
 
             swjs_release: (ref: ref) => {

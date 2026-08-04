@@ -239,9 +239,10 @@ class FancyTestsParser {
             write("\("Ran all test suites.", color: "[90m")\n")  // gray
         }
 
-        if suites.contains(where: { $0.status.isNegative }) {
+        let negativeSuites = suitesWithCases.filter { $0.status.isNegative }
+        if !negativeSuites.isEmpty {
             write("\n\("Failed test cases:", color: "[31m")\n")
-            for suite in suites.filter({ $0.status.isNegative }) {
+            for suite in negativeSuites {
                 for testCase in suite.cases.filter({ $0.status.isNegative }) {
                     write("  \(testCase.statusMark) \(suite.name).\(testCase.name)\n")
                 }

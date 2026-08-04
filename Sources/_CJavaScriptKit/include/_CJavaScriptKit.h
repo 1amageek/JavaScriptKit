@@ -287,6 +287,30 @@ IMPORT_JS_FUNCTION(swjs_create_oneshot_function, JavaScriptObjectRef, (const Jav
                                                                        unsigned int line,
                                                                        JavaScriptObjectRef file))
 
+/// Links two oneshot thunks so invoking either one deactivates and releases the other.
+///
+/// @param first A reference to the first oneshot thunk.
+/// @param second A reference to the second oneshot thunk.
+IMPORT_JS_FUNCTION(swjs_link_oneshot_functions, void, (const JavaScriptObjectRef first,
+                                                       const JavaScriptObjectRef second))
+
+/// Makes a oneshot JavaScript thunk inert without invoking its Swift body.
+///
+/// This is used when an asynchronous observation is cancelled. A later JavaScript invocation
+/// returns `undefined` instead of calling a Swift closure whose lifetime has ended.
+///
+/// @param ref A reference to a oneshot JavaScript thunk function.
+IMPORT_JS_FUNCTION(swjs_cancel_oneshot_function, void, (const JavaScriptObjectRef ref))
+
+/// Cancels a oneshot thunk and releases its Swift closure on the owner worker.
+///
+/// @param object_tid The worker thread that owns the JavaScript function.
+/// @param ref A reference in the owner worker's JavaScript object space.
+/// @param host_func_id The Swift closure identifier in the owner worker.
+IMPORT_JS_FUNCTION(swjs_cancel_oneshot_function_remote, void, (int object_tid,
+                                                               const JavaScriptObjectRef ref,
+                                                               const JavaScriptHostFuncRef host_func_id))
+
 /// Instantiates a new `TypedArray` object with given elements
 /// This is used to provide an efficient way to create `TypedArray`.
 ///
@@ -298,11 +322,32 @@ IMPORT_JS_FUNCTION(swjs_create_typed_array, JavaScriptObjectRef, (const JavaScri
                                                                   const void * _Nullable elements_ptr,
                                                                   const int length))
 
-/// Copies the byte contents of a typed array into a Swift side memory buffer.
+/// Reads the intrinsic byte length of a JavaScript typed array.
 ///
 /// @param ref A JavaScript typed array object.
-/// @param buffer A Swift side buffer into which to copy the bytes.
-IMPORT_JS_FUNCTION(swjs_load_typed_array, void, (const JavaScriptObjectRef ref, unsigned char * _Nonnull buffer))
+/// @param byte_length Receives the intrinsic byte length when the operation succeeds.
+/// @returns 0 on success, 1 when `ref` is not a usable typed array, 2 when its length cannot be
+/// represented by `uint32_t`, or 4 when the Wasm result pointer is invalid.
+IMPORT_JS_FUNCTION(swjs_get_typed_array_byte_length, int32_t, (const JavaScriptObjectRef ref,
+                                                               uint32_t * _Nonnull byte_length))
+
+/// Copies the exact byte view of a typed array into a bounded Swift side memory buffer.
+///
+/// No bytes are written when `capacity` is smaller than the intrinsic typed-array byte length.
+/// The JavaScript implementation reads the intrinsic `buffer`, `byteOffset`, and `byteLength`
+/// accessors rather than overridable object properties.
+///
+/// @param ref A JavaScript typed array object.
+/// @param buffer A Swift side buffer into which to copy the bytes. May be null when capacity is 0.
+/// @param capacity The number of writable bytes at `buffer`.
+/// @param byte_length Receives the current intrinsic byte length when it can be represented.
+/// @returns 0 on success, 1 when `ref` is not a usable typed array, 2 when its length cannot be
+/// represented by `uint32_t`, 3 when the destination is too small, or 4 when Wasm memory access
+/// fails.
+IMPORT_JS_FUNCTION(swjs_copy_typed_array_bytes, int32_t, (const JavaScriptObjectRef ref,
+                                                          unsigned char * _Nullable buffer,
+                                                          uint32_t capacity,
+                                                          uint32_t * _Nonnull byte_length))
 
 /// Decrements reference count of `ref` retained by `SwiftRuntimeHeap` in JavaScript side.
 ///

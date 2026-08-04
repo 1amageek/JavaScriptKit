@@ -91,7 +91,13 @@ export type SwiftRuntimeThreadChannel =
       };
 
 export class ITCInterface {
-    constructor(private memory: JSObjectSpace) {}
+    constructor(
+        private memory: JSObjectSpace,
+        private cancelOneshotBody: (
+            objectRef: ref,
+            hostFunctionID: number,
+        ) => void,
+    ) {}
 
     send(
         sendingObject: ref,
@@ -126,6 +132,14 @@ export class ITCInterface {
 
     release(objectRef: ref): { object: undefined; transfer: Transferable[] } {
         this.memory.release(objectRef);
+        return { object: undefined, transfer: [] };
+    }
+
+    cancelOneshot(
+        objectRef: ref,
+        hostFunctionID: number,
+    ): { object: undefined; transfer: Transferable[] } {
+        this.cancelOneshotBody(objectRef, hostFunctionID);
         return { object: undefined, transfer: [] };
     }
 }

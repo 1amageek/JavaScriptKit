@@ -3,6 +3,14 @@
 //
 import _CJavaScriptKit
 
+private enum JSTypedArrayCopyStatus: Int32 {
+    case success = 0
+    case invalidTypedArray = 1
+    case byteLengthOutOfRange = 2
+    case destinationTooSmall = 3
+    case memoryAccessFailed = 4
+}
+
 /// A protocol that allows a Swift numeric type to be mapped to the JavaScript TypedArray that holds integers of its type
 public protocol TypedArrayElement {
     associatedtype Element: ConvertibleToJSValue, ConstructibleFromJSValue = Self
@@ -75,14 +83,92 @@ public final class JSTypedArray<Traits>: JSBridgedClass, ExpressibleByArrayLiter
 
     /// Length (in bytes) of the typed array.
     /// The value is established when a TypedArray is constructed and cannot be changed.
-    /// If the TypedArray is not specifying a `byteOffset` or a `length`, the `length` of the referenced `ArrayBuffer` will be returned.
+    /// This is the intrinsic byte length of the view, not the complete backing
+    /// `ArrayBuffer` length.
     public var lengthInBytes: Int {
-        Int(jsObject["byteLength"].number!)
+        do {
+            return try validatedByteLength()
+        } catch {
+            preconditionFailure(
+                "The wrapped JavaScript object is not a usable typed array: \(error)"
+            )
+        }
     }
 
     /// Length (in elements) of the typed array.
     public var length: Int {
-        Int(jsObject["length"].number!)
+        let byteLength = lengthInBytes
+        let elementStride = MemoryLayout<Element>.stride
+        precondition(
+            byteLength.isMultiple(of: elementStride),
+            "Typed-array byte length is not aligned to its element stride"
+        )
+        return byteLength / elementStride
+    }
+
+    /// Returns the intrinsic byte length of the typed array.
+    ///
+    /// Unlike JavaScript property access, this operation cannot be changed by an
+    /// own property, subclass override, or Proxy. Invalid and detached views are
+    /// reported as typed failures.
+    public func validatedByteLength() throws(JSTypedArrayCopyError) -> Int {
+        var byteLength: UInt32 = 0
+        let status = swjs_get_typed_array_byte_length(
+            jsObject.id,
+            &byteLength
+        )
+        switch JSTypedArrayCopyStatus(rawValue: status) {
+        case .success:
+            return Int(byteLength)
+        case .invalidTypedArray:
+            throw .invalidTypedArray
+        case .byteLengthOutOfRange:
+            throw .byteLengthOutOfRange
+        case .destinationTooSmall, .memoryAccessFailed:
+            throw .unexpectedRuntimeStatus(status)
+        case nil:
+            throw .unexpectedRuntimeStatus(status)
+        }
+    }
+
+    /// Copies the exact typed-array byte view into a bounded destination.
+    ///
+    /// The JavaScript object owns the source storage for the duration of this
+    /// synchronous call. The destination is borrowed only for the call and its
+    /// pointer never escapes into JavaScript. The runtime validates the current
+    /// intrinsic byte length before writing any byte.
+    public func copyBytes(
+        to destination: UnsafeMutableRawBufferPointer
+    ) throws(JSTypedArrayCopyError) {
+        guard let capacity = UInt32(exactly: destination.count) else {
+            throw .destinationByteCountOutOfRange(
+                capacity: destination.count
+            )
+        }
+        var byteLength: UInt32 = 0
+        let status = swjs_copy_typed_array_bytes(
+            jsObject.id,
+            destination.baseAddress?.assumingMemoryBound(to: UInt8.self),
+            capacity,
+            &byteLength
+        )
+        switch JSTypedArrayCopyStatus(rawValue: status) {
+        case .success:
+            return
+        case .invalidTypedArray:
+            throw .invalidTypedArray
+        case .byteLengthOutOfRange:
+            throw .byteLengthOutOfRange
+        case .destinationTooSmall:
+            throw .destinationTooSmall(
+                required: Int(byteLength),
+                capacity: destination.count
+            )
+        case .memoryAccessFailed:
+            throw .memoryAccessFailed
+        case nil:
+            throw .unexpectedRuntimeStatus(status)
+        }
     }
 
     /// Calls the given closure with a pointer to a copy of the underlying bytes of the
@@ -138,7 +224,11 @@ public final class JSTypedArray<Traits>: JSBridgedClass, ExpressibleByArrayLiter
     ///   The buffer must have enough space to accommodate the contents of the array.
     public func copyMemory(to buffer: UnsafeMutableBufferPointer<Element>) {
         precondition(buffer.count >= length, "Buffer is too small to hold the contents of the array")
-        swjs_load_typed_array(jsObject.id, buffer.baseAddress!)
+        do {
+            try copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
+        } catch {
+            preconditionFailure("Unable to copy JavaScript typed-array bytes: \(error)")
+        }
     }
 }
 

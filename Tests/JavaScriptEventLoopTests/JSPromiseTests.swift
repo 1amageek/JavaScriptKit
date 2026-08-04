@@ -95,4 +95,60 @@ final class JSPromiseTests: XCTestCase {
         }
         withExtendedLifetime(timer) {}
     }
+
+    func testPairedHandlersReleaseTheLosingClosureAfterResolution() async {
+        let baseline = JSOneshotClosure.activeClosureCountForTesting
+
+        await withCheckedContinuation { continuation in
+            _ = JSPromise.resolve(JSValue.number(1)).then(
+                success: { value in
+                    XCTAssertEqual(value, .number(1))
+                    continuation.resume()
+                    return .undefined
+                },
+                failure: { _ in
+                    XCTFail("A resolved Promise must not invoke its rejection handler")
+                    return .undefined
+                }
+            )
+        }
+
+        XCTAssertEqual(
+            JSOneshotClosure.activeClosureCountForTesting,
+            baseline
+        )
+    }
+
+    func testObservationCancellationReleasesBothHandlersAndIgnoresLateResolution() async {
+        let baseline = JSOneshotClosure.activeClosureCountForTesting
+        var resolve: ((JSPromise.Result) -> Void)?
+        var callbackWasInvoked = false
+        let promise = JSPromise { resolver in
+            resolve = resolver
+        }
+        let observation = promise.observe(
+            success: { _ in
+                callbackWasInvoked = true
+                return .undefined
+            },
+            failure: { _ in
+                callbackWasInvoked = true
+                return .undefined
+            }
+        )
+        XCTAssertEqual(
+            JSOneshotClosure.activeClosureCountForTesting,
+            baseline + 2
+        )
+
+        observation.cancel()
+        resolve?(.success(.number(1)))
+        await Task.yield()
+
+        XCTAssertFalse(callbackWasInvoked)
+        XCTAssertEqual(
+            JSOneshotClosure.activeClosureCountForTesting,
+            baseline
+        )
+    }
 }

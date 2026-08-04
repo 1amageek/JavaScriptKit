@@ -88,7 +88,8 @@ type SwiftRuntimeThreadChannel = {
 };
 declare class ITCInterface {
     private memory;
-    constructor(memory: JSObjectSpace);
+    private cancelOneshotBody;
+    constructor(memory: JSObjectSpace, cancelOneshotBody: (objectRef: ref, hostFunctionID: number) => void);
     send(sendingObject: ref, transferringObjects: ref[], sendingContext: pointer): {
         object: any;
         sendingContext: pointer;
@@ -104,6 +105,10 @@ declare class ITCInterface {
         transfer: Transferable[];
     };
     release(objectRef: ref): {
+        object: undefined;
+        transfer: Transferable[];
+    };
+    cancelOneshot(objectRef: ref, hostFunctionID: number): {
         object: undefined;
         transfer: Transferable[];
     };
@@ -184,6 +189,7 @@ declare class SwiftRuntime {
     private _closureDeallocator;
     private options;
     private version;
+    private readonly oneshotFunctionStates;
     private textDecoder;
     private textEncoder;
     /** The thread ID of the current thread. */
@@ -205,6 +211,7 @@ declare class SwiftRuntime {
     private get exports();
     private get closureDeallocator();
     private callHostFunction;
+    private cancelOneshotFunction;
     /** @deprecated Use `wasmImports` instead */
     importObjects: () => WebAssembly.ModuleImports;
     get wasmImports(): WebAssembly.ModuleImports;

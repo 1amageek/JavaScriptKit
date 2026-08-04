@@ -1,27 +1,44 @@
-#if !hasFeature(Embedded)
 import _CJavaScriptKit
 
 /// A `JSFunction` wrapper that enables throwing function calls.
-/// Exceptions produced by JavaScript functions will be thrown as `JSValue`.
+/// Exceptions produced by JavaScript functions will be thrown as `JSException`.
 public class JSThrowingFunction {
     private let base: JSObject
     public init(_ base: JSObject) {
         self.base = base
     }
 
+    /// Calls this function with JavaScript values and an optional `this` context.
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject? = nil,
+        arguments: [JSValue]
+    ) throws(JSException) -> JSValue {
+        try invokeJSFunction(base, arguments: arguments, this: this)
+    }
+
+    #if !hasFeature(Embedded)
     /// Call this function with given `arguments` and binding given `this` as context.
     /// - Parameters:
     ///   - this: The value to be passed as the `this` parameter to this function.
     ///   - arguments: Arguments to be passed to this function.
     /// - Returns: The result of this call.
     @discardableResult
-    public func callAsFunction(this: JSObject? = nil, arguments: [ConvertibleToJSValue]) throws -> JSValue {
-        try invokeJSFunction(base, arguments: arguments, this: this)
+    public func callAsFunction(this: JSObject? = nil, arguments: [ConvertibleToJSValue]) throws(JSException) -> JSValue
+    {
+        try invokeJSFunction(
+            base,
+            arguments: arguments.map(\.jsValue),
+            this: this
+        )
     }
 
     /// A variadic arguments version of `callAsFunction`.
     @discardableResult
-    public func callAsFunction(this: JSObject? = nil, _ arguments: ConvertibleToJSValue...) throws -> JSValue {
+    public func callAsFunction(
+        this: JSObject? = nil,
+        _ arguments: ConvertibleToJSValue...
+    ) throws(JSException) -> JSValue {
         try self(this: this, arguments: arguments)
     }
 
@@ -35,7 +52,18 @@ public class JSThrowingFunction {
     ///
     /// - Parameter arguments: Arguments to be passed to this constructor function.
     /// - Returns: A new instance of this constructor.
-    public func new(arguments: [ConvertibleToJSValue]) throws -> JSObject {
+    public func new(arguments: [ConvertibleToJSValue]) throws(JSException) -> JSObject {
+        try new(arguments: arguments.map(\.jsValue))
+    }
+
+    /// A variadic arguments version of `new`.
+    public func new(_ arguments: ConvertibleToJSValue...) throws(JSException) -> JSObject {
+        try new(arguments: arguments)
+    }
+    #endif
+
+    /// Instantiates an object while preserving a JavaScript constructor exception.
+    public func new(arguments: [JSValue]) throws(JSException) -> JSObject {
         try arguments.withRawJSValues { rawValues -> Result<JSObject, JSException> in
             rawValues.withUnsafeBufferPointer { bufferPointer in
                 let argv = bufferPointer.baseAddress
@@ -65,18 +93,13 @@ public class JSThrowingFunction {
             }
         }.get()
     }
-
-    /// A variadic arguments version of `new`.
-    public func new(_ arguments: ConvertibleToJSValue...) throws -> JSObject {
-        try new(arguments: arguments)
-    }
 }
 
 private func invokeJSFunction(
     _ jsFunc: JSObject,
-    arguments: [ConvertibleToJSValue],
+    arguments: [JSValue],
     this: JSObject?
-) throws -> JSValue {
+) throws(JSException) -> JSValue {
     #if Tracing
     let jsValues = arguments.map { $0.jsValue }
     let traceEnd = JSTracingHooks.beginJSCall(
@@ -122,5 +145,275 @@ private func invokeJSFunction(
         throw JSException(result)
     }
     return result
+}
+
+#if hasFeature(Embedded)
+// Embedded Swift cannot form an existential variadic parameter. These generic
+// overloads preserve the ordinary throwing-call surface for zero through seven
+// arguments while the implementation continues to use one `[JSValue]` path.
+extension JSThrowingFunction {
+    @discardableResult
+    public func callAsFunction(this: JSObject) throws(JSException) -> JSValue {
+        try self(this: this, arguments: [])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(this: this, arguments: [arg0.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(this: this, arguments: [arg0.jsValue, arg1.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(this: this, arguments: [arg0.jsValue, arg1.jsValue, arg2.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(
+            this: this,
+            arguments: [
+                arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            ]
+        )
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(
+            this: this,
+            arguments: [
+                arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+                arg4.jsValue,
+            ]
+        )
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(
+            this: this,
+            arguments: [
+                arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+                arg4.jsValue, arg5.jsValue,
+            ]
+        )
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        this: JSObject,
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue,
+        _ arg6: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(
+            this: this,
+            arguments: [
+                arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+                arg4.jsValue, arg5.jsValue, arg6.jsValue,
+            ]
+        )
+    }
+
+    @discardableResult
+    public func callAsFunction() throws(JSException) -> JSValue {
+        try self(arguments: [])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [arg0.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [arg0.jsValue, arg1.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [arg0.jsValue, arg1.jsValue, arg2.jsValue])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+        ])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            arg4.jsValue,
+        ])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            arg4.jsValue, arg5.jsValue,
+        ])
+    }
+
+    @discardableResult
+    public func callAsFunction(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue,
+        _ arg6: some ConvertibleToJSValue
+    ) throws(JSException) -> JSValue {
+        try self(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            arg4.jsValue, arg5.jsValue, arg6.jsValue,
+        ])
+    }
+
+    public func new() throws(JSException) -> JSObject {
+        try new(arguments: [])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [arg0.jsValue])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [arg0.jsValue, arg1.jsValue])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [arg0.jsValue, arg1.jsValue, arg2.jsValue])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue, arg4.jsValue])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            arg4.jsValue, arg5.jsValue,
+        ])
+    }
+
+    public func new(
+        _ arg0: some ConvertibleToJSValue,
+        _ arg1: some ConvertibleToJSValue,
+        _ arg2: some ConvertibleToJSValue,
+        _ arg3: some ConvertibleToJSValue,
+        _ arg4: some ConvertibleToJSValue,
+        _ arg5: some ConvertibleToJSValue,
+        _ arg6: some ConvertibleToJSValue
+    ) throws(JSException) -> JSObject {
+        try new(arguments: [
+            arg0.jsValue, arg1.jsValue, arg2.jsValue, arg3.jsValue,
+            arg4.jsValue, arg5.jsValue, arg6.jsValue,
+        ])
+    }
 }
 #endif

@@ -131,4 +131,16 @@ import Testing
             """
         )
     }
+
+    @Test func emptyUnfinishedSuiteDoesNotBecomeAFalseFailure() {
+        var output = ""
+        let parser = FancyTestsParser(write: { output += $0 })
+        parser.onLine(
+            "Test Suite 'EmptySuite' started at 2025-03-16 08:10:01.946"
+        )
+        parser.finalize()
+
+        #expect(!output.contains("Some tests failed"))
+        #expect(output.contains("Test Suites:"))
+    }
 }

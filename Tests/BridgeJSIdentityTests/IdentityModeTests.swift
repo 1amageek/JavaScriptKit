@@ -23,7 +23,7 @@ final class IdentityModeTests: XCTestCase {
 
         // Create object and cross it multiple times to fill identity cache
         _retainLeakSubject = RetainLeakSubject(tag: 99)
-        weak var weakSubject = _retainLeakSubject
+        weak let weakSubject = _retainLeakSubject
 
         // Cross to JS 5 times (populates identity cache with WeakRef)
         for _ in 0..<5 {

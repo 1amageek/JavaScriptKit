@@ -156,12 +156,45 @@ public final class JSPromise: JSBridgedClass {
         failure: @escaping (sending JSValue) -> JSValue
     ) -> JSPromise {
         let successClosure = JSOneshotClosure {
-            success($0[0]).jsValue
+            return success($0[0]).jsValue
         }
         let failureClosure = JSOneshotClosure {
-            failure($0[0]).jsValue
+            return failure($0[0]).jsValue
         }
+        JSOneshotClosure.link(successClosure, failureClosure)
         return JSPromise(unsafelyWrapping: jsObject.then!(successClosure, failureClosure).object!)
+    }
+
+    /// Observes either settlement path until the returned owner is cancelled
+    /// or released.
+    ///
+    /// The winning handler releases both Swift closures before invoking the
+    /// corresponding callback. A Promise that never settles can therefore be
+    /// bounded explicitly by cancelling the returned observation.
+    @available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *)
+    public func observe(
+        success: @escaping (sending JSValue) -> JSValue,
+        failure: @escaping (sending JSValue) -> JSValue
+    ) -> JSPromiseObservation {
+        let gate = JSPromiseObservationGate()
+        let successClosure = JSOneshotClosure {
+            guard gate.claimSettlement() else {
+                return .undefined
+            }
+            return success($0[0]).jsValue
+        }
+        let failureClosure = JSOneshotClosure {
+            guard gate.claimSettlement() else {
+                return .undefined
+            }
+            return failure($0[0]).jsValue
+        }
+        JSOneshotClosure.link(successClosure, failureClosure)
+        _ = jsObject.then!(successClosure, failureClosure)
+        return JSPromiseObservation(
+            handle: successClosure.observationHandle,
+            gate: gate
+        )
     }
 
     #if compiler(>=5.5) && (!hasFeature(Embedded) || os(WASI))
@@ -173,11 +206,12 @@ public final class JSPromise: JSBridgedClass {
         failure: sending @escaping (sending JSValue) async throws(JSException) -> JSValue
     ) -> JSPromise {
         let successClosure = JSOneshotClosure.async { arguments throws(JSException) -> JSValue in
-            try await success(arguments[0]).jsValue
+            return try await success(arguments[0]).jsValue
         }
         let failureClosure = JSOneshotClosure.async { arguments throws(JSException) -> JSValue in
-            try await failure(arguments[0]).jsValue
+            return try await failure(arguments[0]).jsValue
         }
+        JSOneshotClosure.link(successClosure, failureClosure)
         return JSPromise(unsafelyWrapping: jsObject.then!(successClosure, failureClosure).object!)
     }
     #endif
