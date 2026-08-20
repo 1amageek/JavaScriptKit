@@ -31,14 +31,14 @@ final class JavaScriptEventLoopTests: XCTestCase {
         throw MessageError("Expect to throw an exception", file: file, line: line, column: column)
     }
 
-    func performanceNow() -> Double {
+    func monotonicNowMilliseconds() -> Double {
         return JSObject.global.performance.now().number!
     }
 
     func measureTime(_ block: () async throws -> Void) async rethrows -> Double {
-        let start = performanceNow()
+        let start = monotonicNowMilliseconds()
         try await block()
-        return performanceNow() - start
+        return monotonicNowMilliseconds() - start
     }
 
     // Error type used in tests

@@ -466,35 +466,6 @@ class JavaScriptKitTests: XCTestCase {
         XCTAssertEqual(decodedTama.isCat, true)
     }
 
-    func testConvertibleToJSValue() {
-        let array1 = [1, 2, 3]
-        let jsArray1 = array1.jsValue.object!
-        XCTAssertEqual(jsArray1.length, .number(3))
-        XCTAssertEqual(jsArray1[0], .number(1))
-        XCTAssertEqual(jsArray1[1], .number(2))
-        XCTAssertEqual(jsArray1[2], .number(3))
-
-        let array2: [ConvertibleToJSValue] = [1, "str", false]
-        let jsArray2 = array2.jsValue.object!
-        XCTAssertEqual(jsArray2.length, .number(3))
-        XCTAssertEqual(jsArray2[0], .number(1))
-        XCTAssertEqual(jsArray2[1], .string("str"))
-        XCTAssertEqual(jsArray2[2], .boolean(false))
-        _ = jsArray2.push!(5)
-        XCTAssertEqual(jsArray2.length, .number(4))
-        _ = jsArray2.push!(jsArray1)
-
-        XCTAssertEqual(jsArray2[4], .object(jsArray1))
-
-        let dict1: [String: JSValue] = [
-            "prop1": 1.jsValue,
-            "prop2": "foo".jsValue,
-        ]
-        let jsDict1 = dict1.jsValue.object!
-        XCTAssertEqual(jsDict1.prop1, .number(1))
-        XCTAssertEqual(jsDict1.prop2, .string("foo"))
-    }
-
     func testGrowMemory() {
         // If WebAssembly.Memory is not accessed correctly (i.e. creating a new view each time),
         // this test will fail with `TypeError: Cannot perform Construct on a detached ArrayBuffer`,

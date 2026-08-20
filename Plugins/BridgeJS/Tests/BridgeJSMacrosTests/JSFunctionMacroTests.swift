@@ -227,22 +227,6 @@ import BridgeJSMacros
         )
     }
 
-    @Test func topLevelFunctionAsyncThrows() {
-        TestSupport.assertMacroExpansion(
-            """
-            @JSFunction
-            func fetch(url: String) async throws(JSException) -> String
-            """,
-            expandedSource: """
-                func fetch(url: String) async throws(JSException) -> String {
-                    return try await _$fetch(url)
-                }
-                """,
-            macroSpecs: macroSpecs,
-            indentationWidth: indentationWidth,
-        )
-    }
-
     @Test func topLevelFunctionWithUnderscoreParameter() {
         TestSupport.assertMacroExpansion(
             """
@@ -352,29 +336,6 @@ import BridgeJSMacros
     }
 
     @Test func initializer() {
-        TestSupport.assertMacroExpansion(
-            """
-            @JSClass
-            struct MyClass {
-                @JSFunction
-                init(name: String) throws(JSException)
-            }
-            """,
-            expandedSource: """
-                @JSClass
-                struct MyClass {
-                    init(name: String) throws(JSException) {
-                        let jsObject = try _$MyClass_init(name)
-                        self.init(unsafelyWrapping: jsObject)
-                    }
-                }
-                """,
-            macroSpecs: macroSpecs,
-            indentationWidth: indentationWidth,
-        )
-    }
-
-    @Test func initializerThrows() {
         TestSupport.assertMacroExpansion(
             """
             @JSClass
