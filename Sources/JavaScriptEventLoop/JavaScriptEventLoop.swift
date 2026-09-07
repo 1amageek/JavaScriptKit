@@ -123,16 +123,17 @@ public final class JavaScriptEventLoop: SerialExecutor, @unchecked Sendable {
     private static func installGlobalExecutorIsolated() {
         guard !didInstallGlobalExecutor else { return }
         didInstallGlobalExecutor = true
-        #if (compiler(>=6.4) || (swift(>=6.3) && arch(wasm32))) && !hasFeature(Embedded)
+        #if (compiler(>=6.4) || (swift(>=6.3) && arch(wasm32))) && (!hasFeature(Embedded) || (compiler(>=6.4) && os(WASI)))
         if #available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *) {
             // For Swift 6.4 and above, we can use the new `ExecutorFactory` API
             _Concurrency._createExecutors(factory: JavaScriptEventLoop.self)
         }
+        #if hasFeature(Embedded)
+        // The fixed Embedded WASI runtime uses the factory for MainActor and
+        // immediate default jobs. Preserve existing legacy compatibility entry points.
+        installByLegacyHook()
+        #endif
         #else
-        // For Embedded Swift, we need to install
-        // the global executor by hook API. The ExecutorFactory mechanism
-        // does not work in Embedded Swift because ExecutorImpl.swift is
-        // excluded from the embedded Concurrency library.
         installByLegacyHook()
         #endif
     }

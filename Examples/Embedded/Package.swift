@@ -11,7 +11,8 @@ let package = Package(
         .executableTarget(
             name: "EmbeddedApp",
             dependencies: [
-                "JavaScriptKit"
+                "JavaScriptKit",
+                .product(name: "JavaScriptEventLoop", package: "JavaScriptKit"),
             ],
             swiftSettings: [
                 .enableExperimentalFeature("Extern")

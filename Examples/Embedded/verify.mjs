@@ -51,11 +51,15 @@ try {
   });
 
   await page.goto(`http://127.0.0.1:${port}/Examples/Embedded/index.html`);
+  await page.getByText("detached-main:1", { exact: true }).waitFor();
   await page.getByText("Count 0").waitFor();
   await page.getByRole("button", { name: "Click me" }).click();
   await page.getByText("Count 1").waitFor();
   await page.getByPlaceholder("Enter text to encode to UTF-8").fill("A");
   await page.getByText("0x41").waitFor();
+  if (await page.locator("#executor-completion").count() !== 1) {
+    throw new Error("The detached-to-MainActor task must complete exactly once");
+  }
   if (pageErrors.length > 0) {
     throw pageErrors[0];
   }

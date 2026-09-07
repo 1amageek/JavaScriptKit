@@ -31,6 +31,7 @@ extension JavaScriptEventLoop: MainExecutor {
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension JavaScriptEventLoop: TaskExecutor {}
 
+#if !hasFeature(Embedded)
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *)
 @_spi(ExperimentalCustomExecutors)
 extension JavaScriptEventLoop: SchedulingExecutor {
@@ -40,13 +41,6 @@ extension JavaScriptEventLoop: SchedulingExecutor {
         tolerance: C.Duration?,
         clock: C
     ) {
-        #if hasFeature(Embedded)
-        // The 6.4 snapshot toolchains do not ship `Clock.enqueue` yet; delayed
-        // enqueue (Task.sleep) is unsupported on Embedded until they do.
-        fatalError(
-            "Delayed enqueue is not supported on this Embedded toolchain"
-        )
-        #else  // #if hasFeature(Embedded)
         let duration: Duration
         if let _ = clock as? ContinuousClock {
             duration = delay as! ContinuousClock.Duration
@@ -60,7 +54,6 @@ extension JavaScriptEventLoop: SchedulingExecutor {
             UnownedJob(job),
             withDelay: milliseconds
         )
-        #endif  // #if hasFeature(Embedded)
     }
 
     private static func delayInMilliseconds(from swiftDuration: Duration) -> Double {
@@ -68,32 +61,20 @@ extension JavaScriptEventLoop: SchedulingExecutor {
         return Double(seconds) * 1_000 + (Double(attoseconds) / 1_000_000_000_000_000)
     }
 }
+#endif
 
 // MARK: - ExecutorFactory Implementation
 @available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *)
 @_spi(ExperimentalCustomExecutors)
 extension JavaScriptEventLoop: ExecutorFactory {
     // Forward all operations to the current thread's JavaScriptEventLoop instance
-    final class CurrentThread: TaskExecutor, SchedulingExecutor, MainExecutor, SerialExecutor {
+    final class CurrentThread: TaskExecutor, MainExecutor, SerialExecutor {
         func checkIsolated() {}
 
         func enqueue(_ job: consuming ExecutorJob) {
             JavaScriptEventLoop.shared.enqueue(job)
         }
 
-        func enqueue<C: Clock>(
-            _ job: consuming ExecutorJob,
-            after delay: C.Duration,
-            tolerance: C.Duration?,
-            clock: C
-        ) {
-            JavaScriptEventLoop.shared.enqueue(
-                job,
-                after: delay,
-                tolerance: tolerance,
-                clock: clock
-            )
-        }
         func run() throws {
             try JavaScriptEventLoop.shared.run()
         }
@@ -110,5 +91,25 @@ extension JavaScriptEventLoop: ExecutorFactory {
         CurrentThread()
     }
 }
+
+#if !hasFeature(Embedded)
+@available(macOS 9999, iOS 9999, watchOS 9999, tvOS 9999, visionOS 9999, *)
+@_spi(ExperimentalCustomExecutors)
+extension JavaScriptEventLoop.CurrentThread: SchedulingExecutor {
+    func enqueue<C: Clock>(
+        _ job: consuming ExecutorJob,
+        after delay: C.Duration,
+        tolerance: C.Duration?,
+        clock: C
+    ) {
+        JavaScriptEventLoop.shared.enqueue(
+            job,
+            after: delay,
+            tolerance: tolerance,
+            clock: clock
+        )
+    }
+}
+#endif
 
 #endif  // #if compiler(>=6.4) || (swift(>=6.3) && arch(wasm32))

@@ -1,4 +1,7 @@
 import JavaScriptKit
+import JavaScriptEventLoop
+
+JavaScriptEventLoop.installGlobalExecutor()
 
 let alert = JSObject.global.alert.object!
 let document = JSObject.global.document
@@ -45,6 +48,15 @@ let encoderContainer = document.createElement("div")
 _ = encoderContainer.appendChild(textInputElement)
 _ = encoderContainer.appendChild(encodeResultElement)
 _ = document.body.appendChild(encoderContainer)
+
+Task.detached {
+    await MainActor.run {
+        let marker = JSObject.global.document.createElement("div")
+        marker.id = "executor-completion"
+        marker.innerText = "detached-main:1"
+        _ = JSObject.global.document.body.appendChild(marker)
+    }
+}
 
 func print(_ message: String) {
     _ = JSObject.global.console.log(message)

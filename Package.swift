@@ -109,6 +109,7 @@ let package = Package(
         .target(
             name: "JavaScriptEventLoop",
             dependencies: ["JavaScriptKit", "_CJavaScriptEventLoop"],
+            exclude: ["DESIGN.md"],
             swiftSettings: shouldBuildForEmbedded
                 ? [
                     .enableExperimentalFeature("Embedded"),
